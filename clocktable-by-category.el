@@ -106,18 +106,25 @@ Based on `org-clock-report'."
               files
               '()))
 
-(defun clocktable-by-category--insert-row (level headline minutes)
+(defun clocktable-by-category--insert-row (level headline minutes narrow)
   "Insert a single row into the clocktable.
 
 - LEVEL: The level of the event
 - HEADLINE: Headline text
-- MINUTES: Duration in minutes"
+- MINUTES: Duration in minutes
+- NARROW: If integer, shorten HEADLINE to this many characters"
   (let ((indent (org-clocktable-indent-string level))
         (shift-cell (clocktable-by-category--shift-cell level))
-        (duration (org-duration-from-minutes minutes)))
-    (insert (s-lex-format "| |${indent}${headline} | ${shift-cell} ${duration} |\n"))))
+        (duration (org-duration-from-minutes minutes))
+        (short-headline (if (and (integerp narrow)
+                                 (> narrow 0))
+                            (if (fboundp 'org-shorten-string)
+                                (org-shorten-string headline narrow)
+                              (truncate-string-to-width headline narrow nil nil t))
+                          headline)))
+    (insert (s-lex-format "| |${indent}${short-headline} | ${shift-cell} ${duration} |\n"))))
 
-(defun clocktable-by-category--insert-category (category entries merge-duplicate-headlines)
+(defun clocktable-by-category--insert-category (category entries merge-duplicate-headlines narrow)
   "Insert a row of ENTRIES for CATEGORY.
 
 - ENTRIES: List of entries with CATEGORY; see `org-clock-get-table-data'"
@@ -143,14 +150,16 @@ Based on `org-clock-report'."
                 (setq total (+ total minutes)))
               (clocktable-by-category--insert-row level
                                                   headline
-                                                  minutes))))
+                                                  minutes
+                                                  narrow))))
       (cl-dolist (entry entries)
         (cl-destructuring-bind (level headline _ _ minutes _) entry
           (when (= level 1)
             (setq total (+ total minutes)))
           (clocktable-by-category--insert-row level
                                               headline
-                                              minutes))))
+                                              minutes
+                                              narrow))))
     (save-excursion
       (let ((duration (org-duration-from-minutes total)))
         (re-search-backward "*Category time*")
@@ -265,11 +274,13 @@ See `org-clocktable-write-default'."
                                                              params))
          (entries-hash (clocktable-by-category--get-entries-by-category-hash clock-data))
          (merge-duplicate-headlines (plist-get params :merge-duplicate-headlines))
+         (narrow (plist-get params :narrow))
          (categories (hash-table-keys entries-hash)))
     (dolist (category categories)
       (clocktable-by-category--insert-category category
                                                (gethash category entries-hash)
-                                               merge-duplicate-headlines))
+                                               merge-duplicate-headlines
+                                               narrow))
     (save-excursion
       (let ((duration (org-duration-from-minutes (clocktable-by-category--sum-durations clock-data))))
         (re-search-backward "*Total time*")
